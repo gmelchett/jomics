@@ -154,7 +154,7 @@ func (jomic *jomic) url2albumPage(root, url string) (uint32, int, error) {
 	}
 	album := uint32(v)
 
-	v, err = strconv.ParseInt(s[1], 0, 64)
+	v, err = strconv.ParseInt(s[1], 10, 64)
 	if err != nil {
 		return 0, 0, fmt.Errorf("Page is not a number")
 	}
