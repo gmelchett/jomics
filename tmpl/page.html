@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
+    <title>{{.Title}}</title>
+  </head>
+  <body>
+    <main class="container">
+
+      <div class="grid">
+	<form action="{{ .First }}"><input type="submit" value="First"/></form>
+	<form action="/"><input type="submit" value="Home"/></form>
+	<form action="{{ .Last }}"><input type="submit" value="Last"/></form>
+      </div>
+
+        <img src="{{.PageImageUrl}}" style="display:block;margin-left:auto;margin-right:auto;width:80%;object-fit:cover;">
+
+      <div class="grid">
+	{{ if .HasPrev }}
+	<form action="{{ .Prev }}"><input type="submit" value="Prev"/></form>
+	{{ else }}
+	<form action="{{ .Prev }}"><input type="submit" value="Prev" disabled/></form>
+	{{ end }}
+
+	{{ if .HasNext }}
+	<form action="{{ .Next }}"><input type="submit" value="Next"/></form>
+	{{ else }}
+	<form action="/"><input type="submit" value="Home"/></form>
+	{{ end }}
+      </div>
+
+    </main>
+  </body>
+</html>
+
