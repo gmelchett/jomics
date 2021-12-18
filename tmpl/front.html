@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
+    <title>Jomic</title>
+
+    <style>
+      .grid-container {
+	  display: grid;
+	  grid-gap: 10px 50px;
+	  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	  padding: 10px;
+      }
+
+      .grid-item {
+	  text-align: center;
+      }
+    </style>
+
+  </head>
+  <body>
+    <main class="container">
+
+      <h1>Jomic</h1>
+
+      <div class="grid-container">
+	{{ range . }}
+	<div class="grid-item"><a href="{{.AlbumUrl}}"><img src="{{.FrontPageUrl}}"></a> <br>{{.ComicName}}</div>
+	{{ end }}
+      </div>
+    </main>
+  </body>
+</html>
