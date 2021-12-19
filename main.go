@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"embed"
 	"fmt"
 	"hash/crc32"
 	"image"
@@ -11,6 +12,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"strconv"
@@ -30,6 +32,7 @@ const FRONTPAGE_HEIGHT = 400
 const FRONT_IMAGE_PATH = "/fronts/"
 const ALBUM_PATH = "/albums/"
 const ALBUM_IMAGE_PATH = "/images/"
+const STATIC_PATH = "/static/"
 
 type comic struct {
 	hash      uint32
@@ -281,6 +284,12 @@ func (jomic *jomic) handleFront(w http.ResponseWriter, r *http.Request) {
 	jomic.frontTmpl.Execute(w, fronts)
 }
 
+//go:embed tmpl tmpl
+var tmplFiles embed.FS
+
+//go:embed static
+var staticFiles embed.FS
+
 func main() {
 	var jomic jomic
 
@@ -288,13 +297,17 @@ func main() {
 
 	jomic.loadFrontPages()
 
-	jomic.frontTmpl = template.Must(template.ParseFiles("tmpl/front.html"))
-	jomic.pageTmpl = template.Must(template.ParseFiles("tmpl/page.html"))
+	jomic.frontTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/front.html"))
+	jomic.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
 
 	http.HandleFunc("/", jomic.handleFront)
 	http.HandleFunc(FRONT_IMAGE_PATH, jomic.handleFrontImage)
 	http.HandleFunc(ALBUM_PATH, jomic.handleShowAlbum)
 	http.HandleFunc(ALBUM_IMAGE_PATH, jomic.handleAlbumImage)
+
+	sub, _ := fs.Sub(staticFiles, "static")
+
+	http.Handle(STATIC_PATH, http.StripPrefix(STATIC_PATH, http.FileServer(http.FS(sub))))
 
 	http.ListenAndServe(":8080", nil)
 }
