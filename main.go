@@ -18,7 +18,9 @@ import (
 	"strconv"
 	"text/template"
 
+	"github.com/OpenPeeDeeP/xdg"
 	"github.com/disintegration/imaging"
+	"github.com/recoilme/pudge"
 	_ "golang.org/x/image/webp"
 
 	"mime"
@@ -34,17 +36,21 @@ const ALBUM_PATH = "/albums/"
 const ALBUM_IMAGE_PATH = "/images/"
 const STATIC_PATH = "/static/"
 
+const JOMICS_FRONT_PAGE_CACHE = "frontpage.cache"
+
 type comic struct {
 	hash      uint32
 	fname     string
 	title     string
 	mimeType  string
-	frontPage *bytes.Buffer
+	frontPage []byte
 }
 
 type jomics struct {
-	comics       map[uint32]*comic
-	sortedComics []uint32
+	comics         map[uint32]*comic
+	sortedComics   []uint32
+	xdg            *xdg.XDG
+	frontPageCache *pudge.Db
 
 	frontTmpl *template.Template
 	pageTmpl  *template.Template
@@ -121,17 +127,27 @@ func (jomics *jomics) loadFrontPages() {
 				fmt.Printf("Failed to open zipfile: %s Error: %v\n", jomics.comics[k].fname, err)
 				continue
 			}
+			dbKey := jomics.comics[k].fname + ":" + imgs[0].Name
 
-			fmt.Println("FrontPage:", imgs[0].Name)
+			if present, err := jomics.frontPageCache.Has(dbKey); err == nil && present {
+				if err := jomics.frontPageCache.Get(dbKey, &jomics.comics[k].frontPage); err == nil {
+					continue
+				} else {
+					fmt.Printf("cache item error: %v -- reload image\n", err)
+				}
+			}
+
+			fmt.Println("Load & resize FrontPage:", dbKey)
 			if zf, err := imgs[0].Open(); err == nil {
 				if m, _, err := image.Decode(zf); err == nil {
 					img := imaging.Resize(m, 0, FRONTPAGE_HEIGHT, imaging.Lanczos)
 
-					jomics.comics[k].frontPage = new(bytes.Buffer)
-					if err := jpeg.Encode(jomics.comics[k].frontPage, img, nil); err != nil {
+					b := new(bytes.Buffer)
+					if err := jpeg.Encode(b, img, nil); err != nil {
 						log.Fatalf("Failed to encode jpeg: %v\n", err)
 					}
-
+					jomics.comics[k].frontPage = b.Bytes()
+					jomics.frontPageCache.Set(dbKey, jomics.comics[k].frontPage)
 				} else {
 					fmt.Printf("Failed to decode image %s in zip: %s Error: %v\n",
 						imgs[0].Name, jomics.comics[k].fname, err)
@@ -184,19 +200,14 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer zr.Close()
 
+	if page >= len(zf) {
+		http.Error(w, "Page not found", http.StatusInternalServerError)
+		return
+	}
+
 	if f, err := zf[page].Open(); err == nil {
 		defer f.Close()
 		io.Copy(w, f)
-		/*
-			if b, err := f.ReadAll(); err == nil {
-				w.WriteHeader(http.StatusOK)
-				w.Header().Set("Content-Type", "application/octet-stream")
-				w.Write(b)
-			} else {
-				http.Error(w, "Decompression error", http.StatusInternalServerError)
-
-			}
-		*/
 	} else {
 		http.Error(w, "Failed to open file in compressed file", http.StatusInternalServerError)
 	}
@@ -259,7 +270,7 @@ func (jomics *jomics) handleFrontImage(w http.ResponseWriter, r *http.Request) {
 	if c, exists := jomics.comics[uint32(album)]; exists {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write(c.frontPage.Bytes())
+		w.Write(c.frontPage)
 	} else {
 		http.Error(w, "No such front page", http.StatusInternalServerError)
 	}
@@ -297,12 +308,41 @@ var tmplFiles embed.FS
 //go:embed static
 var staticFiles embed.FS
 
+func createDir(dir string) (err error) {
+	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
+		err = os.MkdirAll(dir, 0755)
+	}
+	return
+}
+
 func main() {
 	var jomics jomics
+	var err error
+
+	jomics.xdg = xdg.New("gmelchett", "jomics")
+	if err = createDir(jomics.xdg.CacheHome()); err != nil {
+		log.Fatal("Failed to create cache directory", err)
+	}
+
+	if err = createDir(jomics.xdg.DataHome()); err != nil {
+		log.Fatal("Failed to create data directory", err)
+	}
+
+	if jomics.frontPageCache, err = pudge.Open(filepath.Join(jomics.xdg.CacheHome(), JOMICS_FRONT_PAGE_CACHE),
+		&pudge.Config{
+			FileMode:     0644,
+			DirMode:      0755,
+			SyncInterval: 5,
+			StoreMode:    0,
+		}); err != nil {
+		log.Fatal("Failed to create frontpage cache.")
+	}
 
 	jomics.listComics("/data/books/Serier/James Bond/")
 
 	jomics.loadFrontPages()
+
+	jomics.frontPageCache.Close()
 
 	jomics.frontTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/front.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
