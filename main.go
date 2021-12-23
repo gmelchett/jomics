@@ -1,16 +1,23 @@
+//
+// SPDX-FileCopyrightText: 2021 Jonas Aaberg
+//
+// SPDX-License-Identifier: MIT
+//
+
 package main
 
 import (
 	"bytes"
-	"container/list"
 	"embed"
 	"encoding/xml"
+	"flag"
 	"fmt"
 	"hash/crc32"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/jpeg"
+	"image/png"
 	_ "image/png"
 	"io"
 	"io/fs"
@@ -50,7 +57,6 @@ type comic struct {
 	mimeType  string
 	frontPage []byte
 
-	files     *list.List
 	comicInfo *ComicInfo
 }
 
@@ -192,13 +198,20 @@ func (jomics *jomics) saveToCache(hash uint32, data []byte) error {
 
 func (jomics *jomics) prepareAlbums() {
 
-	resizeAndSave := func(h uint32, m image.Image) []byte {
+	resizeAndSave := func(h uint32, m image.Image, toPng bool) []byte {
 		img := imaging.Resize(m, 0, jomics.thumbHeight, imaging.Lanczos)
 
 		b := new(bytes.Buffer)
-		if err := jpeg.Encode(b, img, nil); err != nil {
-			log.Fatalf("Failed to encode jpeg: %v\n", err)
+		var err error
+		if !toPng {
+			err = jpeg.Encode(b, img, nil)
+		} else {
+			err = png.Encode(b, img)
 		}
+		if err != nil {
+			log.Fatalf("Failed to encode image: %v\n", err)
+		}
+
 		data := b.Bytes()
 		jomics.saveToCache(h, data)
 		return data
@@ -216,7 +229,7 @@ func (jomics *jomics) prepareAlbums() {
 			log.Fatal("Can't decode folder.png - corrupt? ", err)
 		}
 
-		jomics.folder = resizeAndSave(FOLDER_PNG_HASH, m)
+		jomics.folder = resizeAndSave(FOLDER_PNG_HASH, m, true)
 	}
 
 	firstResize := false
@@ -271,7 +284,7 @@ func (jomics *jomics) prepareAlbums() {
 			}
 
 			if !firstResize {
-				fmt.Printf("Loading & resizing front page: ")
+				fmt.Printf("Load & resize front pages")
 			}
 			firstResize = true
 
@@ -285,7 +298,7 @@ func (jomics *jomics) prepareAlbums() {
 				}
 
 				if m, _, err := image.Decode(bytes.NewReader(data)); err == nil {
-					jomics.comics[i][j].frontPage = resizeAndSave(jomics.comics[i][j].hash, m)
+					jomics.comics[i][j].frontPage = resizeAndSave(jomics.comics[i][j].hash, m, false)
 				} else {
 					fmt.Printf("Failed to decode image %s in zip: %s Error: %v\n",
 						imgs[0], jomics.comics[i][j].fname, err)
@@ -478,8 +491,19 @@ func createDir(dir string) (err error) {
 }
 
 func main() {
+
+	var thumbHeight = flag.Int("th", THUMB_HEIGHT, "Front page thumb nail size.")
+	var root = flag.String("root", ".", "Comic collection root.")
+	var addr = flag.String("addr", ":8080", "Server address.")
+
+	flag.Parse()
+
+	if *thumbHeight < 100 || *thumbHeight > 2000 {
+		log.Fatal("Invalid thumbnail height")
+	}
+
 	jomics := jomics{
-		thumbHeight: THUMB_HEIGHT,
+		thumbHeight: *thumbHeight,
 	}
 
 	var err error
@@ -489,11 +513,7 @@ func main() {
 		log.Fatal("Failed to create cache directory", err)
 	}
 
-	if err = createDir(jomics.xdg.DataHome()); err != nil {
-		log.Fatal("Failed to create data directory", err)
-	}
-
-	jomics.listComics("/data/books/Serier/Disney/")
+	jomics.listComics(*root)
 
 	jomics.prepareAlbums()
 
@@ -515,5 +535,7 @@ func main() {
 
 	http.Handle(STATIC_PATH, http.StripPrefix(STATIC_PATH, http.FileServer(http.FS(sub))))
 
-	http.ListenAndServe(":8080", nil)
+	if err := http.ListenAndServe(*addr, nil); err != nil {
+		log.Fatal("Failed to start server. Probably faulty address", err)
+	}
 }

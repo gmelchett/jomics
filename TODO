@@ -1,7 +1,4 @@
 TODO:
 
-- progress bar when loading new albums
 - Remove ([text]) hooks at end
-- json file as config
-- alpha channel broken for folders
 - folder.jpg embedd in folder icon
