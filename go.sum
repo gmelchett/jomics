@@ -8,8 +8,6 @@ github.com/gen2brain/go-unarr v0.1.2 h1:17kYZ2WMCVFrnmU4A+7BeFXblIOyE8weqggjay+k
 github.com/gen2brain/go-unarr v0.1.2/go.mod h1:P05CsEe8jVEXhxqXqp9mFKUKFV0BKpFmtgNWf8Mcoos=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/recoilme/pudge v1.0.3 h1:h/9dEv5fRqtzM4lnO69kUoN+k7ukxxrW9NGb9ug0grM=
-github.com/recoilme/pudge v1.0.3/go.mod h1:VMvxBLVkrSStldckzCsETBXox3pfovfrnEchafXk8qA=
 github.com/stretchr/objx v0.1.1 h1:2vfRuCMp5sSVIDSqO8oNnWJq7mPa6KVP3iPIwFBuy8A=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1w=

@@ -23,7 +23,6 @@ import (
 	"github.com/OpenPeeDeeP/xdg"
 	"github.com/disintegration/imaging"
 	"github.com/gen2brain/go-unarr"
-	"github.com/recoilme/pudge"
 	_ "golang.org/x/image/webp"
 
 	"mime"
@@ -32,7 +31,7 @@ import (
 	"strings"
 )
 
-const FRONTPAGE_HEIGHT = 400
+const THUMB_HEIGHT = 400
 const FRONT_IMAGE_PATH = "/fronts/"
 const READ_PATH = "/read/"
 const ALBUMS_PATH = "/albums/"
@@ -56,16 +55,16 @@ type comic struct {
 }
 
 type jomics struct {
-	home           string
-	comics         map[string][]*comic
-	hash2comics    map[uint32]*comic
-	hash2dir       map[uint32]string
-	xdg            *xdg.XDG
-	frontPageCache *pudge.Db
+	home        string
+	comics      map[string][]*comic
+	hash2comics map[uint32]*comic
+	hash2dir    map[uint32]string
+	xdg         *xdg.XDG
 
-	frontTmpl *template.Template
-	pageTmpl  *template.Template
-	folder    []byte
+	frontTmpl   *template.Template
+	pageTmpl    *template.Template
+	folder      []byte
+	thumbHeight int
 }
 
 type ComicInfo struct {
@@ -175,21 +174,39 @@ func loadArchive(fname string) (*unarr.Archive, []string, error) {
 	return r, imgs, nil
 }
 
+func (jomics *jomics) cacheFileName(hash uint32) string {
+	return filepath.Join(jomics.xdg.CacheHome(), fmt.Sprintf("%08x-%d", hash, jomics.thumbHeight))
+}
+
+func (jomics *jomics) loadFromCache(hash uint32) ([]byte, bool) {
+	if d, err := os.ReadFile(jomics.cacheFileName(hash)); err == nil {
+		return d, true
+	} else {
+		return []byte{}, false
+	}
+}
+
+func (jomics *jomics) saveToCache(hash uint32, data []byte) error {
+	return os.WriteFile(jomics.cacheFileName(hash), data, 0644)
+}
+
 func (jomics *jomics) prepareAlbums() {
 
-	resizeAndSave := func(m image.Image, h uint32) []byte {
-		img := imaging.Resize(m, 0, FRONTPAGE_HEIGHT, imaging.Lanczos)
+	resizeAndSave := func(h uint32, m image.Image) []byte {
+		img := imaging.Resize(m, 0, jomics.thumbHeight, imaging.Lanczos)
 
 		b := new(bytes.Buffer)
 		if err := jpeg.Encode(b, img, nil); err != nil {
 			log.Fatalf("Failed to encode jpeg: %v\n", err)
 		}
 		data := b.Bytes()
-		jomics.frontPageCache.Set(h, data)
+		jomics.saveToCache(h, data)
 		return data
 	}
 
-	if present, _ := jomics.frontPageCache.Has(FOLDER_PNG_HASH); !present {
+	var present bool
+
+	if jomics.folder, present = jomics.loadFromCache(FOLDER_PNG_HASH); !present {
 		f, err := staticFiles.Open("static/folder.png")
 		if err != nil {
 			log.Fatal("Can't open folder.png - missing?", err)
@@ -199,11 +216,7 @@ func (jomics *jomics) prepareAlbums() {
 			log.Fatal("Can't decode folder.png - corrupt? ", err)
 		}
 
-		resizeAndSave(m, FOLDER_PNG_HASH)
-	}
-
-	if err := jomics.frontPageCache.Get(FOLDER_PNG_HASH, &jomics.folder); err != nil {
-		log.Fatal("Unable to load folder image from cache", err)
+		jomics.folder = resizeAndSave(FOLDER_PNG_HASH, m)
 	}
 
 	firstResize := false
@@ -226,45 +239,38 @@ func (jomics *jomics) prepareAlbums() {
 			}
 
 			if err := r.EntryFor("ComicInfo.xml"); err == nil {
-				data, err := r.ReadAll()
+				if data, err := r.ReadAll(); err == nil {
 
-				if err != nil {
-					fmt.Printf("Failed read ComicInfo.xml from %s: %v\n", jomics.comics[i][j].fname, err)
-					continue
-				}
+					var ci ComicInfo
 
-				var ci ComicInfo
+					if err := xml.Unmarshal(data, &ci); err == nil {
+						jomics.comics[i][j].title = ci.Series
+						if len(ci.Title) > 0 {
+							jomics.comics[i][j].title += " " + ci.Title
+						}
+						if len(ci.Number) > 0 {
+							jomics.comics[i][j].title += " " + ci.Number
+						}
+						if len(ci.Year) > 0 {
+							jomics.comics[i][j].title += " (" + ci.Year + ")"
+						}
 
-				if err := xml.Unmarshal(data, &ci); err == nil {
-					jomics.comics[i][j].title = ci.Series
-					if len(ci.Title) > 0 {
-						jomics.comics[i][j].title += " " + ci.Title
-					}
-					if len(ci.Number) > 0 {
-						jomics.comics[i][j].title += " " + ci.Number
-					}
-					if len(ci.Year) > 0 {
-						jomics.comics[i][j].title += " (" + ci.Year + ")"
-					}
+						// TODO: Sort images after page order??
+						// Front cover?
 
-					// TODO: Sort images after page order??
-					// Front cover?
-
-					for k := range ci.Pages.Page {
-						if ci.Pages.Page[k].Type == "FrontCover" {
+						for k := range ci.Pages.Page {
+							if ci.Pages.Page[k].Type == "FrontCover" {
+							}
 						}
 					}
 				}
 			}
 
-			if present, err := jomics.frontPageCache.Has(jomics.comics[i][j].hash); err == nil && present {
-				if err := jomics.frontPageCache.Get(jomics.comics[i][j].hash, &jomics.comics[i][j].frontPage); err == nil {
-					continue
-				} else {
-					fmt.Printf("cache item error: %v -- reload image\n", err)
-				}
+			if jomics.comics[i][j].frontPage, present = jomics.loadFromCache(jomics.comics[i][j].hash); present {
+				continue
 			}
-			if firstResize {
+
+			if !firstResize {
 				fmt.Printf("Loading & resizing front page: ")
 			}
 			firstResize = true
@@ -279,7 +285,7 @@ func (jomics *jomics) prepareAlbums() {
 				}
 
 				if m, _, err := image.Decode(bytes.NewReader(data)); err == nil {
-					jomics.comics[i][j].frontPage = resizeAndSave(m, jomics.comics[i][j].hash)
+					jomics.comics[i][j].frontPage = resizeAndSave(jomics.comics[i][j].hash, m)
 				} else {
 					fmt.Printf("Failed to decode image %s in zip: %s Error: %v\n",
 						imgs[0], jomics.comics[i][j].fname, err)
@@ -430,8 +436,6 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 		dir = jomics.hash2dir[uint32(d)]
 	}
 
-	fmt.Println(dir)
-
 	fronts := make([]FrontPage, 0, len(jomics.comics[dir]))
 
 	for h := range jomics.comics[dir] {
@@ -474,7 +478,10 @@ func createDir(dir string) (err error) {
 }
 
 func main() {
-	var jomics jomics
+	jomics := jomics{
+		thumbHeight: THUMB_HEIGHT,
+	}
+
 	var err error
 
 	jomics.xdg = xdg.New("gmelchett", "jomics")
@@ -486,21 +493,9 @@ func main() {
 		log.Fatal("Failed to create data directory", err)
 	}
 
-	if jomics.frontPageCache, err = pudge.Open(filepath.Join(jomics.xdg.CacheHome(), JOMICS_FRONT_PAGE_CACHE),
-		&pudge.Config{
-			FileMode:     0644,
-			DirMode:      0755,
-			SyncInterval: 5,
-			StoreMode:    0,
-		}); err != nil {
-		log.Fatal("Failed to create frontpage cache.")
-	}
-
 	jomics.listComics("/data/books/Serier/Disney/")
 
 	jomics.prepareAlbums()
-
-	jomics.frontPageCache.Close()
 
 	jomics.frontTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/front.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
