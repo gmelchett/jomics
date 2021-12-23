@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"container/list"
 	"embed"
@@ -17,11 +16,13 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"text/template"
 
 	"github.com/OpenPeeDeeP/xdg"
 	"github.com/disintegration/imaging"
+	"github.com/gen2brain/go-unarr"
 	"github.com/recoilme/pudge"
 	_ "golang.org/x/image/webp"
 
@@ -118,14 +119,18 @@ func (jomics *jomics) listComics(root string) {
 	jomics.hash2comics = make(map[uint32]*comic)
 	jomics.hash2dir = make(map[uint32]string)
 
-	homeSet := false
-
 	filepath.WalkDir(root, func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-
-		if de.IsDir() || mime.TypeByExtension(filepath.Ext(de.Name())) == "application/vnd.comicbook+zip" {
+		if path == root {
+			jomics.home = filepath.Dir(path)
+			return nil
+		}
+		mt := mime.TypeByExtension(filepath.Ext(de.Name()))
+		if de.IsDir() ||
+			mt == "application/vnd.comicbook+zip" ||
+			mt == "application/vnd.comicbook-rar" {
 
 			hash := crc32.Checksum([]byte(path), crc32.IEEETable)
 			if de.IsDir() {
@@ -140,37 +145,32 @@ func (jomics *jomics) listComics(root string) {
 
 			jomics.comics[filepath.Dir(path)] = append(jomics.comics[filepath.Dir(path)], c)
 			jomics.hash2comics[c.hash] = c
-			if !homeSet && de.IsDir() {
-				jomics.home = filepath.Dir(path)
-				homeSet = true
-			}
 		}
 		return nil
 	})
-
-	// TODO: Remove empty directories.
-
 }
 
-func loadZip(fname string) (*zip.ReadCloser, []*zip.File, error) {
+func loadArchive(fname string) (*unarr.Archive, []string, error) {
 
-	r, err := zip.OpenReader(fname)
+	r, err := unarr.NewArchive(fname)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	imgs := make([]*zip.File, 0, len(r.File))
+	list, err := r.List()
+	if err != nil {
+		return nil, nil, err
+	}
 
-	for j := range r.File {
-		if strings.HasPrefix(mime.TypeByExtension(filepath.Ext(r.File[j].Name)), "image/") {
-			imgs = append(imgs, r.File[j])
+	imgs := make([]string, 0, len(list))
+
+	for j := range list {
+		if strings.HasPrefix(mime.TypeByExtension(filepath.Ext(list[j])), "image/") {
+			imgs = append(imgs, list[j])
 		}
 	}
 
-	/*	sort.Slice(imgs, func(i, j int) bool {
-			return imgs[i].Name < imgs[j].Name
-		})
-	*/
+	sort.Strings(imgs)
 
 	return r, imgs, nil
 }
@@ -206,6 +206,8 @@ func (jomics *jomics) prepareAlbums() {
 		log.Fatal("Unable to load folder image from cache", err)
 	}
 
+	firstResize := false
+
 	for i := range jomics.comics {
 		for j := range jomics.comics[i] {
 
@@ -216,30 +218,43 @@ func (jomics *jomics) prepareAlbums() {
 				continue
 			}
 
-			r, imgs, err := loadZip(jomics.comics[i][j].fname)
+			r, imgs, err := loadArchive(jomics.comics[i][j].fname)
 
 			if err != nil {
 				fmt.Printf("Failed to open zipfile: %s Error: %v\n", jomics.comics[i][j].fname, err)
 				continue
 			}
 
-			if cif, err := r.Open("ComicInfo.xml"); err == nil {
-				fmt.Printf("comics info in: %s\n", jomics.comics[i][j].fname)
-				st, _ := cif.Stat()
-				b := make([]byte, st.Size())
+			if err := r.EntryFor("ComicInfo.xml"); err == nil {
+				data, err := r.ReadAll()
+
+				if err != nil {
+					fmt.Printf("Failed read ComicInfo.xml from %s: %v\n", jomics.comics[i][j].fname, err)
+					continue
+				}
+
 				var ci ComicInfo
-				cif.Read(b)
-				if err := xml.Unmarshal(b, &ci); err == nil {
-					jomics.comics[i][j].title = ci.Title
-					//if len(ci.Teries
+
+				if err := xml.Unmarshal(data, &ci); err == nil {
+					jomics.comics[i][j].title = ci.Series
+					if len(ci.Title) > 0 {
+						jomics.comics[i][j].title += " " + ci.Title
+					}
+					if len(ci.Number) > 0 {
+						jomics.comics[i][j].title += " " + ci.Number
+					}
+					if len(ci.Year) > 0 {
+						jomics.comics[i][j].title += " (" + ci.Year + ")"
+					}
+
+					// TODO: Sort images after page order??
+					// Front cover?
+
 					for k := range ci.Pages.Page {
 						if ci.Pages.Page[k].Type == "FrontCover" {
-							fmt.Println("FrontCover")
 						}
 					}
 				}
-
-				cif.Close()
 			}
 
 			if present, err := jomics.frontPageCache.Has(jomics.comics[i][j].hash); err == nil && present {
@@ -249,21 +264,34 @@ func (jomics *jomics) prepareAlbums() {
 					fmt.Printf("cache item error: %v -- reload image\n", err)
 				}
 			}
+			if firstResize {
+				fmt.Printf("Loading & resizing front page: ")
+			}
+			firstResize = true
 
-			fmt.Printf("Load & resize FrontPage: 0x%08x\n", jomics.comics[i][j].hash)
-			if zf, err := imgs[0].Open(); err == nil {
-				if m, _, err := image.Decode(zf); err == nil {
+			fmt.Printf(".")
+
+			if err := r.EntryFor(imgs[0]); err == nil {
+				data, err := r.ReadAll()
+				if err != nil {
+					fmt.Printf("Failed read %s from %s: %v\n", imgs[0], jomics.comics[i][j].fname, err)
+					continue
+				}
+
+				if m, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 					jomics.comics[i][j].frontPage = resizeAndSave(m, jomics.comics[i][j].hash)
 				} else {
 					fmt.Printf("Failed to decode image %s in zip: %s Error: %v\n",
-						imgs[0].Name, jomics.comics[i][j].fname, err)
+						imgs[0], jomics.comics[i][j].fname, err)
 				}
-				zf.Close()
 			} else {
-				fmt.Printf("Failed to decompress %s from %s: Error: %v\n", imgs[0].Name, jomics.comics[i][j].fname, err)
+				fmt.Printf("Failed to decompress %s from %s: Error: %v\n", imgs[0], jomics.comics[i][j].fname, err)
 			}
 			r.Close()
 		}
+	}
+	if firstResize {
+		fmt.Println()
 	}
 }
 
@@ -291,7 +319,7 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	zr, zf, err := loadZip(jomics.hash2comics[album].fname)
+	zr, zf, err := loadArchive(jomics.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
@@ -303,9 +331,13 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if f, err := zf[page].Open(); err == nil {
-		defer f.Close()
-		io.Copy(w, f)
+	if err := zr.EntryFor(zf[page]); err == nil {
+		if data, err := zr.ReadAll(); err == nil {
+			io.Copy(w, bytes.NewReader(data))
+		} else {
+			http.Error(w, "Failed to decompress page in compressed file", http.StatusInternalServerError)
+		}
+
 	} else {
 		http.Error(w, "Failed to open file in compressed file", http.StatusInternalServerError)
 	}
@@ -327,7 +359,7 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	zr, zf, err := loadZip(jomics.hash2comics[album].fname)
+	zr, zf, err := loadArchive(jomics.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
