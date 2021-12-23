@@ -12,6 +12,7 @@ import (
 	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -34,7 +35,7 @@ const FRONTPAGE_HEIGHT = 400
 const FRONT_IMAGE_PATH = "/fronts/"
 const READ_PATH = "/read/"
 const ALBUMS_PATH = "/albums/"
-const ALBUM_IMAGE_PATH = "/images/"
+const IMAGE_PATH = "/images/"
 const STATIC_PATH = "/static/"
 
 const JOMICS_FRONT_PAGE_CACHE = "frontpage.cache"
@@ -104,9 +105,7 @@ func (jomics *jomics) listComics(root string) {
 		return nil
 	})
 
-	for k, v := range jomics.comics {
-		fmt.Println(k, len(v))
-	}
+	// TODO: Remove empty directories.
 
 }
 
@@ -201,40 +200,31 @@ func (jomics *jomics) loadFrontPages() {
 	}
 }
 
-/*
-func (jomics *jomics) url2albumPage(root, url string) (uint32, int, error) {
+func getAlbumPage(w http.ResponseWriter, r *http.Request) (uint32, int, error) {
+	q := r.URL.Query()
 
-	s := strings.Split(url[len(root):], "/")
-	if len(s) < 2 {
-		return 0, 0, fmt.Errorf("Faulty URL format")
-	}
-	v, err := strconv.ParseInt(s[0], 0, 64)
+	album, err := strconv.ParseInt(q.Get("album"), 0, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("Album is not a number")
+		http.Error(w, fmt.Sprintf("Unable to parse album id: %v. Error: %v\n", q.Get("album"), err), http.StatusInternalServerError)
+		return 0, 0, err
 	}
-	album := uint32(v)
 
-	v, err = strconv.ParseInt(s[1], 10, 64)
+	page, err := strconv.ParseInt(q.Get("page"), 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("Page is not a number")
+		http.Error(w, fmt.Sprintf("Unable to parse page number: %v. Error: %v\n", q.Get("page"), err), http.StatusInternalServerError)
+		return 0, 0, err
 	}
-	page := int(v)
-	if _, exists := jomics.comics[album]; !exists {
-		return 0, 0, fmt.Errorf("No such album")
-
-	}
-
-	return album, page, nil
+	return uint32(album), int(page), nil
 }
 
 func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 
-	album, page, err := jomics.url2albumPage(ALBUM_IMAGE_PATH, r.URL.Path)
+	album, page, err := getAlbumPage(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	zr, zf, err := loadZip(jomics.comics[album].fname)
+
+	zr, zf, err := loadZip(jomics.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
@@ -265,15 +255,12 @@ type Page struct {
 	Next         string
 }
 
-func (jomics *jomics) handleShowAlbum(w http.ResponseWriter, r *http.Request) {
-
-	album, page, err := jomics.url2albumPage(ALBUM_PATH, r.URL.Path)
+func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
+	album, page, err := getAlbumPage(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	zr, zf, err := loadZip(jomics.comics[album].fname)
+	zr, zf, err := loadZip(jomics.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
@@ -288,34 +275,25 @@ func (jomics *jomics) handleShowAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := Page{
-		Title:        jomics.comics[album].title,
-		First:        ALBUM_PATH + fmt.Sprintf("0x%08x/001", album),
-		Last:         ALBUM_PATH + fmt.Sprintf("0x%08x/%03d", album, numPages),
-		PageImageUrl: ALBUM_IMAGE_PATH + fmt.Sprintf("0x%08x/%03d", album, page),
+		Title:        jomics.hash2comics[album].title,
+		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=001", album),
+		Last:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, numPages),
+		PageImageUrl: IMAGE_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, page),
 		HasPrev:      page > 1,
-		Prev:         ALBUM_PATH + fmt.Sprintf("0x%08x/%03d", album, page-1),
+		Prev:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, page-1),
 		HasNext:      page < numPages,
-		Next:         ALBUM_PATH + fmt.Sprintf("0x%08x/%03d", album, page+1),
+		Next:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, page+1),
 	}
 	jomics.pageTmpl.Execute(w, data)
 }
-
-*/
 
 func (jomics *jomics) handleFrontImage(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 
-	v := q.Get("album")
-
-	if len(v) == 1 {
-		http.Error(w, "No album given", http.StatusInternalServerError)
-		return
-	}
-
-	album, err := strconv.ParseInt(v, 0, 64)
+	album, err := strconv.ParseInt(q.Get("album"), 0, 64)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Unable to parse album int: %s. Error: %v\n", v, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Unable to parse album int: %v. Error: %v\n", q.Get("album"), err), http.StatusInternalServerError)
 		return
 	}
 
@@ -347,7 +325,7 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
 		d, err := strconv.ParseInt(v, 0, 64)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Unable to parse folder int: %s. Error: %v\n", v, err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Unable to parse folder number: %v. Error: %v\n", v, err), http.StatusInternalServerError)
 			return
 		}
 		dir = jomics.hash2dir[uint32(d)]
@@ -380,13 +358,6 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	f, _ := staticFiles.ReadFile("static/favicon.png")
-	w.Write(f)
-}
-
-func folderHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/octet-stream")
-	f, _ := staticFiles.ReadFile("static/folder.png")
 	w.Write(f)
 }
 
@@ -441,12 +412,10 @@ func main() {
 
 	http.HandleFunc(ALBUMS_PATH, jomics.handleListAlbums)
 	http.HandleFunc(FRONT_IMAGE_PATH, jomics.handleFrontImage)
+	http.HandleFunc(READ_PATH, jomics.handleReadAlbum)
+	http.HandleFunc(IMAGE_PATH, jomics.handleAlbumImage)
 
-	/*
-		http.HandleFunc(ALBUM_PATH, jomics.handleShowAlbum)
-		http.HandleFunc(ALBUM_IMAGE_PATH, jomics.handleAlbumImage)
-		http.HandleFunc("/favicon.png", faviconHandler)
-	*/
+	http.HandleFunc("/favicon.png", faviconHandler)
 
 	sub, _ := fs.Sub(staticFiles, "static")
 

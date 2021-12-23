@@ -11,9 +11,9 @@
     <main class="container">
 
       <div class="grid">
-	<div><form action="{{ .First }}"><input type="submit" value="First"/></form></div>
+	<div><form action="{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
 	<div><form action="/"><input type="submit" value="Home"/></form></div>
-	<div><form action="{{ .Last }}"><input type="submit" value="Last"/></form></div>
+	<div><form action="{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
       </div>
 
         <img src="{{.PageImageUrl}}" style="display:block;margin-left:auto;margin-right:auto;width:80%;object-fit:cover;">
@@ -21,14 +21,14 @@
       <div class="grid">
 	<div>
 	  {{ if .HasPrev }}
-	  <form action="{{ .Prev }}"><input type="submit" value="Prev"/></form>
+	  <form action="{{ .Prev }}" method="post"><input type="submit" value="Prev"/></form>
 	  {{ else }}
-	  <form action="{{ .Prev }}"><input type="submit" value="Prev" disabled/></form>
+	  <form action="{{ .Prev }}" method="post"><input type="submit" value="Prev" disabled/></form>
 	  {{ end }}
 	</div>
 	<div>
 	  {{ if .HasNext }}
-	  <form action="{{ .Next }}"><input type="submit" value="Next" /></form>
+	  <form action="{{ .Next }}" method="post"><input type="submit" value="Next" /></form>
 	  {{ else }}
 	  <form action="/"><input type="submit" value="Home" /></form>
 	  {{ end }}
