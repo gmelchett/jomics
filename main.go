@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"container/list"
 	"embed"
+	"encoding/xml"
 	"fmt"
 	"hash/crc32"
 	"image"
@@ -27,7 +28,6 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -50,7 +50,8 @@ type comic struct {
 	mimeType  string
 	frontPage []byte
 
-	files *list.List
+	files     *list.List
+	comicInfo *ComicInfo
 }
 
 type jomics struct {
@@ -64,6 +65,51 @@ type jomics struct {
 	frontTmpl *template.Template
 	pageTmpl  *template.Template
 	folder    []byte
+}
+
+type ComicInfo struct {
+	XMLName         xml.Name `xml:"ComicInfo"`
+	Text            string   `xml:",chardata"`
+	Xsd             string   `xml:"xsd,attr"`
+	Xsi             string   `xml:"xsi,attr"`
+	Title           string   `xml:"Title"`
+	Series          string   `xml:"Series"`
+	Number          string   `xml:"Number"`
+	Volume          string   `xml:"Volume"`
+	AlternateSeries string   `xml:"AlternateSeries"`
+	SeriesGroup     string   `xml:"SeriesGroup"`
+	Summary         string   `xml:"Summary"`
+	Notes           string   `xml:"Notes"`
+	Year            string   `xml:"Year"`
+	Month           string   `xml:"Month"`
+	Day             string   `xml:"Day"`
+	Writer          string   `xml:"Writer"`
+	Penciller       string   `xml:"Penciller"`
+	Inker           string   `xml:"Inker"`
+	Colorist        string   `xml:"Colorist"`
+	Letterer        string   `xml:"Letterer"`
+	CoverArtist     string   `xml:"CoverArtist"`
+	Editor          string   `xml:"Editor"`
+	Publisher       string   `xml:"Publisher"`
+	Genre           string   `xml:"Genre"`
+	Web             string   `xml:"Web"`
+	PageCount       string   `xml:"PageCount"`
+	LanguageISO     string   `xml:"LanguageISO"`
+	AgeRating       string   `xml:"AgeRating"`
+	Characters      string   `xml:"Characters"`
+	Teams           string   `xml:"Teams"`
+	ScanInformation string   `xml:"ScanInformation"`
+	Pages           struct {
+		Text string `xml:",chardata"`
+		Page []struct {
+			Text        string `xml:",chardata"`
+			Image       string `xml:"Image,attr"`
+			ImageSize   string `xml:"ImageSize,attr"`
+			ImageWidth  string `xml:"ImageWidth,attr"`
+			ImageHeight string `xml:"ImageHeight,attr"`
+			Type        string `xml:"Type,attr"`
+		} `xml:"Page"`
+	} `xml:"Pages"`
 }
 
 func (jomics *jomics) listComics(root string) {
@@ -81,8 +127,6 @@ func (jomics *jomics) listComics(root string) {
 
 		if de.IsDir() || mime.TypeByExtension(filepath.Ext(de.Name())) == "application/vnd.comicbook+zip" {
 
-			title := strings.Title(strings.ReplaceAll(de.Name()[:len(de.Name())-len(filepath.Ext(de.Name()))], "_", " "))
-
 			hash := crc32.Checksum([]byte(path), crc32.IEEETable)
 			if de.IsDir() {
 				jomics.hash2dir[hash] = path
@@ -92,7 +136,6 @@ func (jomics *jomics) listComics(root string) {
 				hash:  hash,
 				isDir: de.IsDir(),
 				fname: path,
-				title: title,
 			}
 
 			jomics.comics[filepath.Dir(path)] = append(jomics.comics[filepath.Dir(path)], c)
@@ -124,14 +167,15 @@ func loadZip(fname string) (*zip.ReadCloser, []*zip.File, error) {
 		}
 	}
 
-	sort.Slice(imgs, func(i, j int) bool {
-		return imgs[i].Name < imgs[j].Name
-	})
+	/*	sort.Slice(imgs, func(i, j int) bool {
+			return imgs[i].Name < imgs[j].Name
+		})
+	*/
 
 	return r, imgs, nil
 }
 
-func (jomics *jomics) loadFrontPages() {
+func (jomics *jomics) prepareAlbums() {
 
 	resizeAndSave := func(m image.Image, h uint32) []byte {
 		img := imaging.Resize(m, 0, FRONTPAGE_HEIGHT, imaging.Lanczos)
@@ -164,6 +208,10 @@ func (jomics *jomics) loadFrontPages() {
 
 	for i := range jomics.comics {
 		for j := range jomics.comics[i] {
+
+			f := filepath.Base(jomics.comics[i][j].fname)
+			jomics.comics[i][j].title = strings.Title(strings.ReplaceAll(f[:len(f)-len(filepath.Ext(f))], "_", " "))
+
 			if jomics.comics[i][j].isDir {
 				continue
 			}
@@ -173,6 +221,25 @@ func (jomics *jomics) loadFrontPages() {
 			if err != nil {
 				fmt.Printf("Failed to open zipfile: %s Error: %v\n", jomics.comics[i][j].fname, err)
 				continue
+			}
+
+			if cif, err := r.Open("ComicInfo.xml"); err == nil {
+				fmt.Printf("comics info in: %s\n", jomics.comics[i][j].fname)
+				st, _ := cif.Stat()
+				b := make([]byte, st.Size())
+				var ci ComicInfo
+				cif.Read(b)
+				if err := xml.Unmarshal(b, &ci); err == nil {
+					jomics.comics[i][j].title = ci.Title
+					//if len(ci.Teries
+					for k := range ci.Pages.Page {
+						if ci.Pages.Page[k].Type == "FrontCover" {
+							fmt.Println("FrontCover")
+						}
+					}
+				}
+
+				cif.Close()
 			}
 
 			if present, err := jomics.frontPageCache.Has(jomics.comics[i][j].hash); err == nil && present {
@@ -399,7 +466,7 @@ func main() {
 
 	jomics.listComics("/data/books/Serier/Disney/")
 
-	jomics.loadFrontPages()
+	jomics.prepareAlbums()
 
 	jomics.frontPageCache.Close()
 
