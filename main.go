@@ -285,6 +285,10 @@ func (jomics *jomics) prepareAlbums() {
 			firstResize = true
 
 			fmt.Printf(".")
+			if len(imgs) == 0 {
+				fmt.Printf("Warning: No images found in: %s\n", jomics.comics[i][j].fname)
+				continue
+			}
 
 			if err := r.EntryFor(imgs[0]); err == nil {
 				data, err := r.ReadAll()
