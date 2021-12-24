@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/pico-master/css/pico.min.css">
+    <link rel="stylesheet" href="{{.WebRoot}}/static/pico-master/css/pico.min.css">
     <title>Jomics</title>
-    <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
+    <link rel="shortcut icon" type="image/png" href="{{.WebRoot}}/favicon.png"/>
     <style>
       .grid-container {
 	  display: grid;
@@ -23,11 +23,11 @@
   <body>
     <main class="container">
 
-      <a href="/"><img src="/static/jomics.png"/></a>
+      <a href="{{.WebRoot}}/"><img src="{{.WebRoot}}/static/jomics.png"/></a>
 
       <div class="grid-container">
-	{{ range . }}
-	<div class="grid-item"><a href="{{.AlbumUrl}}"><img src="{{.FrontPageUrl}}"></a> <br>{{.ComicName}}</div>
+	{{ range .FrontCovers }}
+	<div class="grid-item"><a href="{{.WebRoot}}{{.AlbumUrl}}"><img src="{{.WebRoot}}{{.FrontCoverUrl}}"></a> <br>{{.ComicName}}</div>
 	{{ end }}
       </div>
     </main>

@@ -38,37 +38,36 @@ import (
 )
 
 const THUMB_HEIGHT = 400
-const FRONT_IMAGE_PATH = "/fronts/"
+const FRONT_COVER_PATH = "/covers/"
 const READ_PATH = "/read/"
 const ALBUMS_PATH = "/albums/"
 const IMAGE_PATH = "/images/"
 const STATIC_PATH = "/static/"
 
-const JOMICS_FRONT_PAGE_CACHE = "frontpage.cache"
-
 var FOLDER_PNG_HASH = crc32.Checksum([]byte("folder.png"), crc32.IEEETable)
 
 type comic struct {
-	hash      uint32
-	fname     string
-	title     string
-	isDir     bool
-	frontPage []byte
+	hash       uint32
+	fname      string
+	title      string
+	isDir      bool
+	frontCover []byte
 
 	comicInfo *ComicInfo
 }
 
 type jomics struct {
 	home        string
+	webroot     string
 	comics      map[string][]*comic
 	hash2comics map[uint32]*comic
 	hash2dir    map[uint32]string
 	xdg         *xdg.XDG
 
-	frontTmpl   *template.Template
-	pageTmpl    *template.Template
-	folder      []byte
-	thumbHeight int
+	frontCoverTmpl *template.Template
+	pageTmpl       *template.Template
+	folder         []byte
+	thumbHeight    int
 }
 
 type ComicInfo struct {
@@ -275,7 +274,7 @@ func (jomics *jomics) prepareAlbums() {
 				}
 			}
 
-			if jomics.comics[i][j].frontPage, present = jomics.loadFromCache(jomics.comics[i][j].hash); present {
+			if jomics.comics[i][j].frontCover, present = jomics.loadFromCache(jomics.comics[i][j].hash); present {
 				continue
 			}
 
@@ -298,7 +297,7 @@ func (jomics *jomics) prepareAlbums() {
 				}
 
 				if m, _, err := image.Decode(bytes.NewReader(data)); err == nil {
-					jomics.comics[i][j].frontPage = resizeAndSave(jomics.comics[i][j].hash, m, false)
+					jomics.comics[i][j].frontCover = resizeAndSave(jomics.comics[i][j].hash, m, false)
 				} else {
 					fmt.Printf("Failed to decode image %s in zip: %s Error: %v\n",
 						imgs[0], jomics.comics[i][j].fname, err)
@@ -364,6 +363,7 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 
 type Page struct {
 	Title        string
+	WebRoot      string
 	First        string
 	Last         string
 	HasPrev      bool
@@ -396,6 +396,7 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 		Title:        jomics.hash2comics[album].title,
 		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=001", album),
 		Last:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, numPages),
+		WebRoot:      jomics.webroot,
 		PageImageUrl: IMAGE_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, page),
 		HasPrev:      page > 1,
 		Prev:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%03d", album, page-1),
@@ -418,7 +419,7 @@ func (jomics *jomics) handleFrontImage(w http.ResponseWriter, r *http.Request) {
 	if c, exists := jomics.hash2comics[uint32(album)]; exists {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write(c.frontPage)
+		w.Write(c.frontCover)
 	} else if uint32(album) == FOLDER_PNG_HASH {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -428,10 +429,16 @@ func (jomics *jomics) handleFrontImage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type FrontPage struct {
-	ComicName    string
-	FrontPageUrl string
-	AlbumUrl     string
+type FrontCover struct {
+	ComicName     string
+	FrontCoverUrl string
+	AlbumUrl      string
+	WebRoot       string
+}
+
+type Albums struct {
+	WebRoot     string
+	FrontCovers []FrontCover
 }
 
 func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
@@ -449,25 +456,30 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 		dir = jomics.hash2dir[uint32(d)]
 	}
 
-	fronts := make([]FrontPage, 0, len(jomics.comics[dir]))
+	albums := Albums{
+		WebRoot:     jomics.webroot,
+		FrontCovers: make([]FrontCover, 0, len(jomics.comics[dir])),
+	}
 
 	for h := range jomics.comics[dir] {
 		if !jomics.comics[dir][h].isDir {
-			fronts = append(fronts,
-				FrontPage{ComicName: jomics.comics[dir][h].title,
-					FrontPageUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_IMAGE_PATH, jomics.comics[dir][h].hash),
-					AlbumUrl:     fmt.Sprintf("%s?album=0x%08x&page=001", READ_PATH, jomics.comics[dir][h].hash),
+			albums.FrontCovers = append(albums.FrontCovers,
+				FrontCover{ComicName: jomics.comics[dir][h].title,
+					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, jomics.comics[dir][h].hash),
+					AlbumUrl:      fmt.Sprintf("%s?album=0x%08x&page=001", READ_PATH, jomics.comics[dir][h].hash),
+					WebRoot:       jomics.webroot,
 				})
 		} else {
-			fronts = append(fronts,
-				FrontPage{ComicName: jomics.comics[dir][h].title,
-					FrontPageUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_IMAGE_PATH, FOLDER_PNG_HASH),
-					AlbumUrl:     fmt.Sprintf("%s?folder=0x%08x&", ALBUMS_PATH, jomics.comics[dir][h].hash),
+			albums.FrontCovers = append(albums.FrontCovers,
+				FrontCover{ComicName: jomics.comics[dir][h].title,
+					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, FOLDER_PNG_HASH),
+					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&", ALBUMS_PATH, jomics.comics[dir][h].hash),
+					WebRoot:       jomics.webroot,
 				})
 
 		}
 	}
-	jomics.frontTmpl.Execute(w, fronts)
+	jomics.frontCoverTmpl.Execute(w, albums)
 }
 
 func faviconHandler(w http.ResponseWriter, r *http.Request) {
@@ -495,6 +507,7 @@ func main() {
 	var thumbHeight = flag.Int("th", THUMB_HEIGHT, "Front page thumb nail size.")
 	var root = flag.String("root", "", "Comic collection root.")
 	var addr = flag.String("addr", ":4531", "Server address.")
+	var webroot = flag.String("webroot", "", "Web root. Useful when using proxy servers")
 
 	flag.Parse()
 
@@ -508,8 +521,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	*webroot = strings.TrimRight(*webroot, "/")
+
 	jomics := jomics{
 		thumbHeight: *thumbHeight,
+		webroot:     *webroot,
 	}
 
 	var err error
@@ -523,23 +539,23 @@ func main() {
 
 	jomics.prepareAlbums()
 
-	jomics.frontTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/front.html"))
+	jomics.frontCoverTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/frontcover.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, ALBUMS_PATH, http.StatusFound)
+	http.HandleFunc(*webroot+"/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, *webroot+ALBUMS_PATH, http.StatusFound)
 	})
 
-	http.HandleFunc(ALBUMS_PATH, jomics.handleListAlbums)
-	http.HandleFunc(FRONT_IMAGE_PATH, jomics.handleFrontImage)
-	http.HandleFunc(READ_PATH, jomics.handleReadAlbum)
-	http.HandleFunc(IMAGE_PATH, jomics.handleAlbumImage)
+	http.HandleFunc(*webroot+ALBUMS_PATH, jomics.handleListAlbums)
+	http.HandleFunc(*webroot+FRONT_COVER_PATH, jomics.handleFrontImage)
+	http.HandleFunc(*webroot+READ_PATH, jomics.handleReadAlbum)
+	http.HandleFunc(*webroot+IMAGE_PATH, jomics.handleAlbumImage)
 
-	http.HandleFunc("/favicon.png", faviconHandler)
+	http.HandleFunc(*webroot+"/favicon.png", faviconHandler)
 
 	sub, _ := fs.Sub(staticFiles, "static")
 
-	http.Handle(STATIC_PATH, http.StripPrefix(STATIC_PATH, http.FileServer(http.FS(sub))))
+	http.Handle(*webroot+STATIC_PATH, http.StripPrefix(*webroot+STATIC_PATH, http.FileServer(http.FS(sub))))
 
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal("Failed to start server. Probably faulty address", err)

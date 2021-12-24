@@ -3,34 +3,34 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/pico-master/css/pico.min.css">
+    <link rel="stylesheet" href="{{ .WebRoot}}/static/pico-master/css/pico.min.css">
     <title>{{.Title}}</title>
-    <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
+    <link rel="shortcut icon" type="image/png" href="{{ .WebRoot}}/favicon.png"/>
   </head>
   <body>
     <main class="container">
 
       <div class="grid">
-	<div><form action="{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
-	<div><form action="/"><input type="submit" value="Home"/></form></div>
-	<div><form action="{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
+	<div><form action="{{ .WebRoot}}/"><input type="submit" value="Home"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
       </div>
 
-        <img src="{{.PageImageUrl}}" style="display:block;margin-left:auto;margin-right:auto;width:100%;object-fit:cover;">
+        <img src="{{ .WebRoot}}{{.PageImageUrl}}" style="display:block;margin-left:auto;margin-right:auto;width:100%;object-fit:cover;">
 	<br/>
       <div class="grid">
 	<div>
 	  {{ if .HasPrev }}
-	  <form action="{{ .Prev }}" method="post"><input type="submit" value="Prev"/></form>
+	  <form action="{{ .WebRoot}}{{ .Prev }}" method="post"><input type="submit" value="Prev"/></form>
 	  {{ else }}
-	  <form action="{{ .Prev }}" method="post"><input type="submit" value="Prev" disabled/></form>
+	  <form action="{{ .WebRoot}}{{ .Prev }}" method="post"><input type="submit" value="Prev" disabled/></form>
 	  {{ end }}
 	</div>
 	<div>
 	  {{ if .HasNext }}
-	  <form action="{{ .Next }}" method="post"><input type="submit" value="Next" /></form>
+	  <form action="{{ .WebRoot}}{{ .Next }}" method="post"><input type="submit" value="Next" /></form>
 	  {{ else }}
-	  <form action="/"><input type="submit" value="Home" /></form>
+	  <form action="{{ .WebRoot}}/"><input type="submit" value="Home" /></form>
 	  {{ end }}
 	</div>
       </div>
