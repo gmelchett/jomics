@@ -11,19 +11,21 @@ You need a go compiler, probably a pretty new version. Clone the repo, and run
 
 `go get && go build`
 
-All data will be embedded into the `jomics` binary.
+All data will be embedded into the `jomics` binary. It is not possible to build
+jomics free of libc dependencies, due to build constraints in the `go-unarr` package
+which is used to read cbr and cbz.
 
 ## Usage
 ```
   Usage of ./jomics:
     -addr string
-          Server address. (default ":8080")
+          Server address. (default ":4531")
     -root string
-          Comic collection root. (default ".")
+          Comic collection root.
     -th int
           Front page thumb nail size. (default 400)
 ```
-And point your favorite browser to `localhost:8080` if you are using the address.
+And point your favorite browser to `localhost:4531` if you are using the address.
 
 ## Security
 There is none. It is just a comics reader server.
@@ -35,7 +37,7 @@ There is none. It is just a comics reader server.
  * http://github.com/disintegration/imaging is used to resize images.
  * http://github.com/gen2brain/go-unarr for uncompressing zip and rar archives.
 
-## TODO
+## Future plans
 Currently jomics is feature complete. I have no plans to add any features, but it might change once I've used jomics for some time.
 
 ## License

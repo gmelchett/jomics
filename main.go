@@ -493,13 +493,19 @@ func createDir(dir string) (err error) {
 func main() {
 
 	var thumbHeight = flag.Int("th", THUMB_HEIGHT, "Front page thumb nail size.")
-	var root = flag.String("root", ".", "Comic collection root.")
-	var addr = flag.String("addr", ":8080", "Server address.")
+	var root = flag.String("root", "", "Comic collection root.")
+	var addr = flag.String("addr", ":4531", "Server address.")
 
 	flag.Parse()
 
+	if len(*root) == 0 {
+		fmt.Println("You must provide a root directory.")
+		os.Exit(1)
+	}
+
 	if *thumbHeight < 100 || *thumbHeight > 2000 {
-		log.Fatal("Invalid thumbnail height")
+		fmt.Println("Invalid thumbnail height.")
+		os.Exit(1)
 	}
 
 	jomics := jomics{
