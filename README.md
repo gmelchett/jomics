@@ -1,7 +1,13 @@
 # Jomics
 
-Jomics is a simple comic reader server. It supports cbz and cbr and can handle folders.
-It has some basic `ComicInfo.xml` support. (Probably it can be developed further.)
+Jomics is a simple comic reader server.
+
+Features:
+ * Supports cbz and cbr
+ * Basic `ComicInfo.xml` support  (Probably it can be developed further.)
+ * Folders
+ * No configuration files, no databases, no webservers etc.
+ * The only dependencies is libc and the kernel.
 
 ![jomics](jomics.png "Jomics screenshot")
 
@@ -12,8 +18,8 @@ You need a go compiler, probably a pretty new version. Clone the repo, and run
 `go get && go build`
 
 All data will be embedded into the `jomics` binary. It is not possible to build
-jomics free of libc dependencies, due to build constraints in the `go-unarr` package
-which is used to read cbr and cbz.
+jomics free of libc dependencies due to build constraints in the `go-unarr` package.
+`go-unarr` is used to read cbr and cbz.
 
 ## Usage
 ```
@@ -25,7 +31,9 @@ which is used to read cbr and cbz.
     -th int
           Front page thumb nail size. (default 400)
 ```
-And point your favorite browser to `localhost:4531` if you are using the address.
+jomics will start with generating thumb nails of all album covers. It will take some time.
+If you change the thumb nail size, new thumb nails will be generated.
+Then point your favorite browser to `localhost:4531` if you are using the address.
 
 ## Security
 There is none. It is just a comics reader server.
