@@ -165,7 +165,7 @@ func loadArchive(fname string) (*unarr.Archive, []string, error) {
 
 	for j := range list {
 		ext := strings.ToLower(filepath.Ext(list[j]))
-		if ext == ".jpg" || ext == ".png" || ext == ".webp" || ext == ".gif" {
+		if ext == ".jpg" || ext == ".png" || ext == ".webp" || ext == ".gif" || ext == ".jpeg" {
 			imgs = append(imgs, list[j])
 		}
 	}
