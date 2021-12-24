@@ -32,7 +32,6 @@ import (
 	"github.com/gen2brain/go-unarr"
 	_ "golang.org/x/image/webp"
 
-	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +53,6 @@ type comic struct {
 	fname     string
 	title     string
 	isDir     bool
-	mimeType  string
 	frontPage []byte
 
 	comicInfo *ComicInfo
@@ -132,11 +130,8 @@ func (jomics *jomics) listComics(root string) {
 			jomics.home = filepath.Dir(path)
 			return nil
 		}
-		mt := mime.TypeByExtension(filepath.Ext(de.Name()))
-		if de.IsDir() ||
-			mt == "application/vnd.comicbook+zip" ||
-			mt == "application/vnd.comicbook-rar" {
 
+		if de.IsDir() || filepath.Ext(de.Name()) == ".cbz" || filepath.Ext(de.Name()) == ".cbr" {
 			hash := crc32.Checksum([]byte(path), crc32.IEEETable)
 			if de.IsDir() {
 				jomics.hash2dir[hash] = path
@@ -170,7 +165,8 @@ func loadArchive(fname string) (*unarr.Archive, []string, error) {
 	imgs := make([]string, 0, len(list))
 
 	for j := range list {
-		if strings.HasPrefix(mime.TypeByExtension(filepath.Ext(list[j])), "image/") {
+		ext := strings.ToLower(filepath.Ext(list[j]))
+		if ext == ".jpg" || ext == ".png" || ext == ".webp" || ext == ".gif" {
 			imgs = append(imgs, list[j])
 		}
 	}
