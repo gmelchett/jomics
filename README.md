@@ -13,7 +13,7 @@ Features:
 
 ## Installation
 
-You need a go compiler, probably a pretty new version. Clone the repo, and run
+You need the golang toolchain version 1.16 or newer. Then clone the repo, and run
 
 `go get && go build`
 
