@@ -366,6 +366,7 @@ type Page struct {
 	Title        string
 	WebRoot      string
 	First        string
+	Back         string
 	Last         string
 	HasPrev      bool
 	PageImageUrl string
@@ -392,10 +393,16 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Faulty URL format", http.StatusInternalServerError)
 		return
 	}
+	backFolder := "/"
+
+	if f, err := strconv.ParseInt(r.URL.Query().Get("folder"), 0, 64); err == nil {
+		backFolder = ALBUMS_PATH + fmt.Sprintf("?folder=0x%08x", f)
+	}
 
 	data := Page{
 		Title:        jomics.hash2comics[album].title,
 		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=0", album),
+		Back:         backFolder,
 		Last:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, numPages-1),
 		WebRoot:      jomics.webroot,
 		PageImageUrl: IMAGE_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, page),
@@ -440,17 +447,12 @@ type Albums struct {
 
 func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
-	q := r.URL.Query()
-
 	dir := jomics.home
-	if v := q.Get("folder"); len(v) > 0 {
+	folderHash := 0
 
-		d, err := strconv.ParseInt(v, 0, 64)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Unable to parse folder number: %v. Error: %v\n", v, err), http.StatusInternalServerError)
-			return
-		}
+	if d, err := strconv.ParseInt(r.URL.Query().Get("folder"), 0, 64); err == nil {
 		if v, exists := jomics.hash2dir[uint32(d)]; exists {
+			folderHash = int(d)
 			dir = v
 		}
 	}
@@ -465,7 +467,7 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 			albums.FrontCovers = append(albums.FrontCovers,
 				FrontCover{ComicName: jomics.comics[dir][h].title,
 					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, jomics.comics[dir][h].hash),
-					AlbumUrl:      fmt.Sprintf("%s?album=0x%08x&page=0", READ_PATH, jomics.comics[dir][h].hash),
+					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&album=0x%08x&page=0", READ_PATH, folderHash, jomics.comics[dir][h].hash),
 					WebRoot:       jomics.webroot,
 				})
 		} else {
