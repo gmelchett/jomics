@@ -521,6 +521,7 @@ func main() {
 	}
 
 	*webroot = strings.TrimRight(*webroot, "/")
+	*root += "/" // Make sure there is an ending /
 
 	jomics := jomics{
 		thumbHeight: *thumbHeight,
