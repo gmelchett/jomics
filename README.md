@@ -49,10 +49,11 @@ into different shelves (directories) as well.
 
 ## Third party packages
  * The folder icon is taken from http://www.clker.com/clipart-simple-file-folder.html (resized & included)
- * The CSS framework used https://picocss.com/ (included)
+ * The CSS framework used https://picocss.com/ (included as zip)
  * http://github.com/OpenPeeDeeP/xdg for cache directory.
  * http://github.com/disintegration/imaging is used to resize images.
  * http://github.com/gen2brain/go-unarr for uncompressing zip and rar archives.
+ * http://github.com/spectrumjade/zipfs to embed picocss as zip
 
 ## Future plans
  * Periodically scan comic collection for new comics.

@@ -7,6 +7,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"embed"
 	"encoding/xml"
@@ -27,6 +28,7 @@ import (
 	"strconv"
 	"text/template"
 
+	"gerace.dev/zipfs"
 	"github.com/OpenPeeDeeP/xdg"
 	"github.com/disintegration/imaging"
 	"github.com/gen2brain/go-unarr"
@@ -43,6 +45,7 @@ const READ_PATH = "/read/"
 const ALBUMS_PATH = "/albums/"
 const IMAGE_PATH = "/images/"
 const STATIC_PATH = "/static/"
+const CSS_PATH = "/css/"
 
 var FOLDER_PNG_HASH = crc32.Checksum([]byte("folder.png"), crc32.IEEETable)
 
@@ -500,6 +503,9 @@ var tmplFiles embed.FS
 //go:embed static
 var staticFiles embed.FS
 
+//go:embed css/pico-master.zip
+var picocssZipFile []byte
+
 func createDir(dir string) (err error) {
 	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
 		err = os.MkdirAll(dir, 0755)
@@ -548,6 +554,16 @@ func main() {
 	jomics.frontCoverTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/frontcover.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
 
+	picocssZipReader, err := zip.NewReader(bytes.NewReader(picocssZipFile), int64(len(picocssZipFile)))
+	if err != nil {
+		log.Fatalf("pico-master.zip is failty: %v", err)
+	}
+
+	picocssZipFs, err := zipfs.NewZipFileSystem(picocssZipReader)
+	if err != nil {
+		log.Fatalf("zipfs creation failure: %v", err)
+	}
+
 	http.HandleFunc(*webroot+"/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, *webroot+ALBUMS_PATH, http.StatusFound)
 	})
@@ -562,6 +578,7 @@ func main() {
 	sub, _ := fs.Sub(staticFiles, "static")
 
 	http.Handle(*webroot+STATIC_PATH, http.StripPrefix(*webroot+STATIC_PATH, http.FileServer(http.FS(sub))))
+	http.Handle(*webroot+CSS_PATH, http.StripPrefix(*webroot+CSS_PATH, http.FileServer(picocssZipFs)))
 
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal("Failed to start server. Probably faulty address", err)
