@@ -365,6 +365,8 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 type Page struct {
 	Title        string
 	WebRoot      string
+	Page         int
+	NumPages     int
 	First        string
 	Back         string
 	Last         string
@@ -401,6 +403,8 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 
 	data := Page{
 		Title:        jomics.hash2comics[album].title,
+		Page:         page + 1,
+		NumPages:     numPages,
 		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=0", album),
 		Back:         backFolder,
 		Last:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, numPages-1),
