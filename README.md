@@ -25,7 +25,8 @@ jomics free of libc dependencies due to build constraints in the `go-unarr` pack
 ```
 Usage of ./jomics:
   -addr string
-        Server address. (default ":4531")
+        Server address.
+        Set to ":4531" if you want jomics to be reachable from other computers. (default "localhost:4531")
   -root string
         Comic collection root.
   -th int

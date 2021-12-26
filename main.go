@@ -511,7 +511,7 @@ func main() {
 
 	var thumbHeight = flag.Int("th", THUMB_HEIGHT, "Front page thumb nail size.")
 	var root = flag.String("root", "", "Comic collection root.")
-	var addr = flag.String("addr", ":4531", "Server address.")
+	var addr = flag.String("addr", "localhost:4531", "Server address.\nSet to \":4531\" if you want jomics to be reachable from other computers.")
 	var webroot = flag.String("webroot", "", "For reverse proxy servers use.")
 
 	flag.Parse()
