@@ -9,12 +9,6 @@
   </head>
   <body>
     <main class="container">
-
-      <div class="grid">
-	<div><form action="{{ .WebRoot}}{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
-	<div><form action="{{ .WebRoot}}{{ .Back }}" method="post"><input type="submit" value="Back"/></form></div>
-	<div><form action="{{ .WebRoot}}{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
-      </div>
       <p style="text-align: right;"> Page {{.Page}} of {{.NumPages}} </p>
       <img src="{{ .WebRoot}}{{.PageImageUrl}}" style="display:block;margin-left:auto;margin-right:auto;width:100%;object-fit:cover;">
       <br/>
@@ -34,6 +28,13 @@
 	  {{ end }}
 	</div>
       </div>
+
+      <div class="grid">
+	<div><form action="{{ .WebRoot}}{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .Back }}" method="post"><input type="submit" value="Back"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
+      </div>
+
     </main>
   </body>
 </html>
