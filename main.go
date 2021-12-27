@@ -64,6 +64,7 @@ type comic struct {
 type comicCollection struct {
 	cacheDir    string
 	thumbHeight int
+	quiet       bool
 	comics      map[string][]*comic
 	hash2comics map[uint32]*comic
 	hash2dir    map[uint32]string
@@ -287,12 +288,15 @@ func (col *comicCollection) prepareAlbums() {
 				continue
 			}
 
-			if !firstResize {
+			if !firstResize && !col.quiet {
 				fmt.Printf("Load & resize front pages")
 			}
 			firstResize = true
 
-			fmt.Printf(".")
+			if !col.quiet {
+				fmt.Printf(".")
+			}
+
 			if len(imgs) == 0 {
 				fmt.Printf("\nWarning: No images found in: %s\n", col.comics[i][j].fname)
 				r.Close()
@@ -319,18 +323,19 @@ func (col *comicCollection) prepareAlbums() {
 			r.Close()
 		}
 	}
-	if firstResize {
+	if firstResize && !col.quiet {
 		fmt.Println("done")
 	}
 }
 
-func scanCollection(rootDir, cacheDir string, thumbHeight int) *comicCollection {
+func scanCollection(rootDir, cacheDir string, thumbHeight int, quiet bool) *comicCollection {
 	col := &comicCollection{
 		comics:      make(map[string][]*comic),
 		hash2comics: make(map[uint32]*comic),
 		hash2dir:    make(map[uint32]string),
 		cacheDir:    cacheDir,
 		thumbHeight: thumbHeight,
+		quiet:       quiet,
 	}
 	col.listComics(rootDir)
 	col.prepareAlbums()
@@ -553,7 +558,8 @@ func main() {
 	var root = flag.String("root", "", "Comic collection root.")
 	var addr = flag.String("addr", "localhost:4531", "Server address.\nSet to \":4531\" if you want jomics to be reachable from other computers.")
 	var webroot = flag.String("webroot", "", "For reverse proxy servers use.")
-	var scanInter = flag.Int("si", 300, "Rescan collection interval. Zero or negative to disable.\n")
+	var scanInter = flag.Int("si", 300, "Rescan collection interval. Zero or negative to disable.")
+	var quiet = flag.Bool("q", false, "Quiet. No prints when new comics are discovered.")
 
 	flag.Parse()
 
@@ -581,7 +587,7 @@ func main() {
 		log.Fatal("Failed to create cache directory", err)
 	}
 
-	jomics.collection = scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight)
+	jomics.collection = scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight, *quiet)
 
 	jomics.frontCoverTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/frontcover.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
@@ -616,7 +622,7 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(time.Duration(*scanInter) * time.Second)
-				c := scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight)
+				c := scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight, *quiet)
 				jomics.colMutex.Lock()
 				jomics.collection = c
 				jomics.colMutex.Unlock()

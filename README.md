@@ -28,11 +28,11 @@ Usage of ./jomics:
   -addr string
         Server address.
         Set to ":4531" if you want jomics to be reachable from other computers. (default "localhost:4531")
+  -q    Quiet. No prints when new comics are discovered.
   -root string
         Comic collection root.
   -si int
-        Rescan collection interval. Zero or negative to disable.
-         (default 300)
+        Rescan collection interval. Zero or negative to disable. (default 300)
   -th int
         Front page thumb nail size. (default 400)
   -webroot string
