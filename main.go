@@ -26,7 +26,9 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
 	"text/template"
+	"time"
 
 	"gerace.dev/zipfs"
 	"github.com/OpenPeeDeeP/xdg"
@@ -59,17 +61,24 @@ type comic struct {
 	comicInfo *ComicInfo
 }
 
-type jomics struct {
-	home        string
-	webroot     string
+type comicCollection struct {
+	cacheDir    string
+	thumbHeight int
 	comics      map[string][]*comic
 	hash2comics map[uint32]*comic
 	hash2dir    map[uint32]string
-	xdg         *xdg.XDG
+}
+
+type jomics struct {
+	rootDir    string
+	webroot    string
+	collection *comicCollection
+	colMutex   sync.Mutex
+
+	xdg *xdg.XDG
 
 	frontCoverTmpl *template.Template
 	pageTmpl       *template.Template
-	thumbHeight    int
 }
 
 type ComicInfo struct {
@@ -117,25 +126,20 @@ type ComicInfo struct {
 	} `xml:"Pages"`
 }
 
-func (jomics *jomics) listComics(root string) {
-
-	jomics.comics = make(map[string][]*comic)
-	jomics.hash2comics = make(map[uint32]*comic)
-	jomics.hash2dir = make(map[uint32]string)
+func (col *comicCollection) listComics(root string) {
 
 	filepath.WalkDir(root, func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if path == root {
-			jomics.home = filepath.Dir(path)
 			return nil
 		}
 
 		if de.IsDir() || filepath.Ext(de.Name()) == ".cbz" || filepath.Ext(de.Name()) == ".cbr" {
 			hash := crc32.Checksum([]byte(path), crc32.IEEETable)
 			if de.IsDir() {
-				jomics.hash2dir[hash] = path
+				col.hash2dir[hash] = path
 			}
 
 			c := &comic{
@@ -144,8 +148,8 @@ func (jomics *jomics) listComics(root string) {
 				fname: path,
 			}
 
-			jomics.comics[filepath.Dir(path)] = append(jomics.comics[filepath.Dir(path)], c)
-			jomics.hash2comics[c.hash] = c
+			col.comics[filepath.Dir(path)] = append(col.comics[filepath.Dir(path)], c)
+			col.hash2comics[c.hash] = c
 		}
 		return nil
 	})
@@ -177,26 +181,26 @@ func loadArchive(fname string) (*unarr.Archive, []string, error) {
 	return r, imgs, nil
 }
 
-func (jomics *jomics) cacheFileName(hash uint32) string {
-	return filepath.Join(jomics.xdg.CacheHome(), fmt.Sprintf("%08x-%d", hash, jomics.thumbHeight))
+func (col *comicCollection) cacheFileName(hash uint32) string {
+	return filepath.Join(col.cacheDir, fmt.Sprintf("%08x-%d", hash, col.thumbHeight))
 }
 
-func (jomics *jomics) loadFromCache(hash uint32) ([]byte, bool) {
-	if d, err := os.ReadFile(jomics.cacheFileName(hash)); err == nil {
+func (col *comicCollection) loadFromCache(hash uint32) ([]byte, bool) {
+	if d, err := os.ReadFile(col.cacheFileName(hash)); err == nil {
 		return d, true
 	} else {
 		return []byte{}, false
 	}
 }
 
-func (jomics *jomics) saveToCache(hash uint32, data []byte) error {
-	return os.WriteFile(jomics.cacheFileName(hash), data, 0644)
+func (col *comicCollection) saveToCache(hash uint32, data []byte) error {
+	return os.WriteFile(col.cacheFileName(hash), data, 0644)
 }
 
-func (jomics *jomics) prepareAlbums() {
+func (col *comicCollection) prepareAlbums() {
 
 	resizeAndSave := func(h uint32, m image.Image, toPng bool) []byte {
-		img := imaging.Resize(m, 0, jomics.thumbHeight, imaging.Lanczos)
+		img := imaging.Resize(m, 0, col.thumbHeight, imaging.Lanczos)
 
 		b := new(bytes.Buffer)
 		var err error
@@ -210,13 +214,13 @@ func (jomics *jomics) prepareAlbums() {
 		}
 
 		data := b.Bytes()
-		jomics.saveToCache(h, data)
+		col.saveToCache(h, data)
 		return data
 	}
 
 	var present bool
 
-	folder, present := jomics.loadFromCache(FOLDER_PNG_HASH)
+	folder, present := col.loadFromCache(FOLDER_PNG_HASH)
 	if !present {
 		f, err := staticFiles.Open("static/folder.png")
 		if err != nil {
@@ -229,24 +233,24 @@ func (jomics *jomics) prepareAlbums() {
 
 		folder = resizeAndSave(FOLDER_PNG_HASH, m, true)
 	}
-	jomics.hash2comics[FOLDER_PNG_HASH] = &comic{frontCover: folder}
+	col.hash2comics[FOLDER_PNG_HASH] = &comic{frontCover: folder}
 
 	firstResize := false
 
-	for i := range jomics.comics {
-		for j := range jomics.comics[i] {
+	for i := range col.comics {
+		for j := range col.comics[i] {
 
-			f := filepath.Base(jomics.comics[i][j].fname)
-			jomics.comics[i][j].title = strings.Title(strings.ReplaceAll(f[:len(f)-len(filepath.Ext(f))], "_", " "))
+			f := filepath.Base(col.comics[i][j].fname)
+			col.comics[i][j].title = strings.Title(strings.ReplaceAll(f[:len(f)-len(filepath.Ext(f))], "_", " "))
 
-			if jomics.comics[i][j].isDir {
+			if col.comics[i][j].isDir {
 				continue
 			}
 
-			r, imgs, err := loadArchive(jomics.comics[i][j].fname)
+			r, imgs, err := loadArchive(col.comics[i][j].fname)
 
 			if err != nil {
-				fmt.Printf("Failed to open zipfile: %s Error: %v\n", jomics.comics[i][j].fname, err)
+				fmt.Printf("Failed to open zipfile: %s Error: %v\n", col.comics[i][j].fname, err)
 				continue
 			}
 
@@ -256,15 +260,15 @@ func (jomics *jomics) prepareAlbums() {
 					var ci ComicInfo
 
 					if err := xml.Unmarshal(data, &ci); err == nil {
-						jomics.comics[i][j].title = ci.Series
+						col.comics[i][j].title = ci.Series
 						if len(ci.Title) > 0 {
-							jomics.comics[i][j].title += " " + ci.Title
+							col.comics[i][j].title += " " + ci.Title
 						}
 						if len(ci.Number) > 0 {
-							jomics.comics[i][j].title += " " + ci.Number
+							col.comics[i][j].title += " " + ci.Number
 						}
 						if len(ci.Year) > 0 {
-							jomics.comics[i][j].title += " (" + ci.Year + ")"
+							col.comics[i][j].title += " (" + ci.Year + ")"
 						}
 
 						// TODO: Sort images after page order??
@@ -278,7 +282,8 @@ func (jomics *jomics) prepareAlbums() {
 				}
 			}
 
-			if jomics.comics[i][j].frontCover, present = jomics.loadFromCache(jomics.comics[i][j].hash); present {
+			if col.comics[i][j].frontCover, present = col.loadFromCache(col.comics[i][j].hash); present {
+				r.Close()
 				continue
 			}
 
@@ -289,25 +294,27 @@ func (jomics *jomics) prepareAlbums() {
 
 			fmt.Printf(".")
 			if len(imgs) == 0 {
-				fmt.Printf("\nWarning: No images found in: %s\n", jomics.comics[i][j].fname)
+				fmt.Printf("\nWarning: No images found in: %s\n", col.comics[i][j].fname)
+				r.Close()
 				continue
 			}
 
 			if err := r.EntryFor(imgs[0]); err == nil {
 				data, err := r.ReadAll()
 				if err != nil {
-					fmt.Printf("\nFailed read %s from %s: %v\n", imgs[0], jomics.comics[i][j].fname, err)
+					fmt.Printf("\nFailed read %s from %s: %v\n", imgs[0], col.comics[i][j].fname, err)
+					r.Close()
 					continue
 				}
 
 				if m, _, err := image.Decode(bytes.NewReader(data)); err == nil {
-					jomics.comics[i][j].frontCover = resizeAndSave(jomics.comics[i][j].hash, m, false)
+					col.comics[i][j].frontCover = resizeAndSave(col.comics[i][j].hash, m, false)
 				} else {
 					fmt.Printf("\nFailed to decode image %s in zip: %s Error: %v\n",
-						imgs[0], jomics.comics[i][j].fname, err)
+						imgs[0], col.comics[i][j].fname, err)
 				}
 			} else {
-				fmt.Printf("\nFailed to decompress %s from %s: Error: %v\n", imgs[0], jomics.comics[i][j].fname, err)
+				fmt.Printf("\nFailed to decompress %s from %s: Error: %v\n", imgs[0], col.comics[i][j].fname, err)
 			}
 			r.Close()
 		}
@@ -315,6 +322,19 @@ func (jomics *jomics) prepareAlbums() {
 	if firstResize {
 		fmt.Println("done")
 	}
+}
+
+func scanCollection(rootDir, cacheDir string, thumbHeight int) *comicCollection {
+	col := &comicCollection{
+		comics:      make(map[string][]*comic),
+		hash2comics: make(map[uint32]*comic),
+		hash2dir:    make(map[uint32]string),
+		cacheDir:    cacheDir,
+		thumbHeight: thumbHeight,
+	}
+	col.listComics(rootDir)
+	col.prepareAlbums()
+	return col
 }
 
 func getAlbumPage(w http.ResponseWriter, r *http.Request) (uint32, int, error) {
@@ -341,7 +361,10 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	zr, zf, err := loadArchive(jomics.hash2comics[album].fname)
+	jomics.colMutex.Lock()
+	defer jomics.colMutex.Unlock()
+
+	zr, zf, err := loadArchive(jomics.collection.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
@@ -381,11 +404,16 @@ type Page struct {
 }
 
 func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
+
 	album, page, err := getAlbumPage(w, r)
 	if err != nil {
 		return
 	}
-	zr, zf, err := loadArchive(jomics.hash2comics[album].fname)
+
+	jomics.colMutex.Lock()
+	defer jomics.colMutex.Unlock()
+
+	zr, zf, err := loadArchive(jomics.collection.hash2comics[album].fname)
 	if err != nil {
 		http.Error(w, "Error loading album file", http.StatusInternalServerError)
 		return
@@ -405,7 +433,7 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := Page{
-		Title:        jomics.hash2comics[album].title,
+		Title:        jomics.collection.hash2comics[album].title,
 		Page:         page + 1,
 		NumPages:     numPages,
 		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=0", album),
@@ -431,7 +459,10 @@ func (jomics *jomics) handleFrontImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if c, exists := jomics.hash2comics[uint32(album)]; exists {
+	jomics.colMutex.Lock()
+	defer jomics.colMutex.Unlock()
+
+	if c, exists := jomics.collection.hash2comics[uint32(album)]; exists {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Write(c.frontCover)
@@ -454,11 +485,14 @@ type Albums struct {
 
 func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
-	dir := jomics.home
+	jomics.colMutex.Lock()
+	defer jomics.colMutex.Unlock()
+
+	dir := jomics.rootDir
 	folderHash := 0
 
 	if d, err := strconv.ParseInt(r.URL.Query().Get("folder"), 0, 64); err == nil {
-		if v, exists := jomics.hash2dir[uint32(d)]; exists {
+		if v, exists := jomics.collection.hash2dir[uint32(d)]; exists {
 			folderHash = int(d)
 			dir = v
 		}
@@ -466,22 +500,22 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
 	albums := Albums{
 		WebRoot:     jomics.webroot,
-		FrontCovers: make([]FrontCover, 0, len(jomics.comics[dir])),
+		FrontCovers: make([]FrontCover, 0, len(jomics.collection.comics[dir])),
 	}
 
-	for h := range jomics.comics[dir] {
-		if !jomics.comics[dir][h].isDir {
+	for h := range jomics.collection.comics[dir] {
+		if !jomics.collection.comics[dir][h].isDir {
 			albums.FrontCovers = append(albums.FrontCovers,
-				FrontCover{ComicName: jomics.comics[dir][h].title,
-					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, jomics.comics[dir][h].hash),
-					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&album=0x%08x&page=0", READ_PATH, folderHash, jomics.comics[dir][h].hash),
+				FrontCover{ComicName: jomics.collection.comics[dir][h].title,
+					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, jomics.collection.comics[dir][h].hash),
+					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&album=0x%08x&page=0", READ_PATH, folderHash, jomics.collection.comics[dir][h].hash),
 					WebRoot:       jomics.webroot,
 				})
 		} else {
 			albums.FrontCovers = append(albums.FrontCovers,
-				FrontCover{ComicName: jomics.comics[dir][h].title,
+				FrontCover{ComicName: jomics.collection.comics[dir][h].title,
 					FrontCoverUrl: fmt.Sprintf("%s?album=0x%08x&", FRONT_COVER_PATH, FOLDER_PNG_HASH),
-					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&", ALBUMS_PATH, jomics.comics[dir][h].hash),
+					AlbumUrl:      fmt.Sprintf("%s?folder=0x%08x&", ALBUMS_PATH, jomics.collection.comics[dir][h].hash),
 					WebRoot:       jomics.webroot,
 				})
 
@@ -519,6 +553,7 @@ func main() {
 	var root = flag.String("root", "", "Comic collection root.")
 	var addr = flag.String("addr", "localhost:4531", "Server address.\nSet to \":4531\" if you want jomics to be reachable from other computers.")
 	var webroot = flag.String("webroot", "", "For reverse proxy servers use.")
+	var scanInter = flag.Int("si", 300, "Rescan collection interval. Zero or negative to disable.\n")
 
 	flag.Parse()
 
@@ -533,11 +568,10 @@ func main() {
 	}
 
 	*webroot = strings.TrimRight(*webroot, "/")
-	*root += "/" // Make sure there is an ending /
 
 	jomics := jomics{
-		thumbHeight: *thumbHeight,
-		webroot:     *webroot,
+		webroot: *webroot,
+		rootDir: filepath.Dir(*root),
 	}
 
 	var err error
@@ -547,16 +581,14 @@ func main() {
 		log.Fatal("Failed to create cache directory", err)
 	}
 
-	jomics.listComics(*root)
-
-	jomics.prepareAlbums()
+	jomics.collection = scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight)
 
 	jomics.frontCoverTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/frontcover.html"))
 	jomics.pageTmpl = template.Must(template.ParseFS(tmplFiles, "tmpl/page.html"))
 
 	picocssZipReader, err := zip.NewReader(bytes.NewReader(picocssZipFile), int64(len(picocssZipFile)))
 	if err != nil {
-		log.Fatalf("pico-master.zip is failty: %v", err)
+		log.Fatalf("pico-master.zip is faulty: %v", err)
 	}
 
 	picocssZipFs, err := zipfs.NewZipFileSystem(picocssZipReader)
@@ -580,7 +612,19 @@ func main() {
 	http.Handle(*webroot+STATIC_PATH, http.StripPrefix(*webroot+STATIC_PATH, http.FileServer(http.FS(sub))))
 	http.Handle(*webroot+CSS_PATH, http.StripPrefix(*webroot+CSS_PATH, http.FileServer(picocssZipFs)))
 
+	if *scanInter > 0 {
+		go func() {
+			for {
+				time.Sleep(time.Duration(*scanInter) * time.Second)
+				c := scanCollection(*root, jomics.xdg.CacheHome(), *thumbHeight)
+				jomics.colMutex.Lock()
+				jomics.collection = c
+				jomics.colMutex.Unlock()
+			}
+		}()
+	}
+
 	if err := http.ListenAndServe(*addr, nil); err != nil {
-		log.Fatal("Failed to start server. Probably faulty address", err)
+		log.Fatal("Failed to start server. Probably faulty address.", err)
 	}
 }
