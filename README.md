@@ -10,7 +10,8 @@ Features:
  * The only dependencies is libc and the kernel.
  * Periodically rescans comic directory.
 
-![jomics](jomics.png "Jomics screenshot")
+![jomics](jomics-light.png "Jomics screenshot - light theme")
+![jomics](jomics-dark.png "Jomics screenshot - light theme")
 
 ## Installation
 
@@ -28,6 +29,8 @@ Usage of ./jomics:
   -addr string
         Server address.
         Set to ":4531" if you want jomics to be reachable from other computers. (default "localhost:4531")
+  -light
+        Light CSS theme. Default is dark.
   -q    Quiet. No prints when new comics are discovered.
   -root string
         Comic collection root.

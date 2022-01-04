@@ -71,6 +71,7 @@ type comicCollection struct {
 }
 
 type jomics struct {
+	theme      string
 	rootDir    string
 	webroot    string
 	collection *comicCollection
@@ -394,6 +395,7 @@ func (jomics *jomics) handleAlbumImage(w http.ResponseWriter, r *http.Request) {
 }
 
 type Page struct {
+	Theme        string
 	Title        string
 	WebRoot      string
 	Page         int
@@ -442,6 +444,7 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 	af := fmt.Sprintf("?album=0x%08x&folder=0x%08x&", album, folder)
 
 	data := Page{
+		Theme:        jomics.theme,
 		Title:        jomics.collection.hash2comics[album].title,
 		Page:         page + 1,
 		NumPages:     numPages,
@@ -489,6 +492,7 @@ type FrontCover struct {
 
 type Albums struct {
 	WebRoot     string
+	Theme       string
 	FrontCovers []FrontCover
 }
 
@@ -508,6 +512,7 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 	}
 
 	albums := Albums{
+		Theme:       jomics.theme,
 		WebRoot:     jomics.webroot,
 		FrontCovers: make([]FrontCover, 0, len(jomics.collection.comics[dir])),
 	}
@@ -565,6 +570,8 @@ func main() {
 	var scanInter = flag.Int("si", 300, "Rescan collection interval. Zero or negative to disable.")
 	var quiet = flag.Bool("q", false, "Quiet. No prints when new comics are discovered.")
 
+	var light = flag.Bool("light", false, "Light CSS theme. Default is dark.")
+
 	flag.Parse()
 
 	if len(*root) == 0 {
@@ -580,8 +587,13 @@ func main() {
 	*webroot = strings.TrimRight(*webroot, "/")
 
 	jomics := jomics{
+		theme:   "dark",
 		webroot: *webroot,
 		rootDir: filepath.Dir(*root),
+	}
+
+	if *light {
+		jomics.theme = "light"
 	}
 
 	var err error
