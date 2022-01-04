@@ -432,24 +432,28 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	backFolder := "/"
+	folder := 0x0
 
 	if f, err := strconv.ParseInt(r.URL.Query().Get("folder"), 0, 64); err == nil {
 		backFolder = ALBUMS_PATH + fmt.Sprintf("?folder=0x%08x", f)
+		folder = int(f)
 	}
+
+	af := fmt.Sprintf("?album=0x%08x&folder=0x%08x&", album, folder)
 
 	data := Page{
 		Title:        jomics.collection.hash2comics[album].title,
 		Page:         page + 1,
 		NumPages:     numPages,
-		First:        READ_PATH + fmt.Sprintf("?album=0x%08x&page=0", album),
+		First:        READ_PATH + af + fmt.Sprintf("page=0", album),
 		Back:         backFolder,
-		Last:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, numPages-1),
+		Last:         READ_PATH + af + fmt.Sprintf("page=%d", numPages-1),
 		WebRoot:      jomics.webroot,
-		PageImageUrl: IMAGE_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, page),
+		PageImageUrl: IMAGE_PATH + af + fmt.Sprintf("page=%d", page),
 		HasPrev:      page > 0,
-		Prev:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, page-1),
+		Prev:         READ_PATH + af + fmt.Sprintf("page=%d", page-1),
 		HasNext:      page < (numPages - 1),
-		Next:         READ_PATH + fmt.Sprintf("?album=0x%08x&page=%d", album, page+1),
+		Next:         READ_PATH + af + fmt.Sprintf("page=%d", page+1),
 	}
 	jomics.pageTmpl.Execute(w, data)
 }
