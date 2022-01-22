@@ -493,6 +493,7 @@ type FrontCover struct {
 type Albums struct {
 	WebRoot     string
 	Theme       string
+	Logo        string
 	FrontCovers []FrontCover
 }
 
@@ -513,8 +514,13 @@ func (jomics *jomics) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
 	albums := Albums{
 		Theme:       jomics.theme,
+		Logo:        "jomics.png",
 		WebRoot:     jomics.webroot,
 		FrontCovers: make([]FrontCover, 0, len(jomics.collection.comics[dir])),
+	}
+
+	if jomics.theme == "dark" {
+		albums.Logo = "jomics-dark.png"
 	}
 
 	for h := range jomics.collection.comics[dir] {
