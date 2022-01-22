@@ -448,7 +448,7 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 		Title:        jomics.collection.hash2comics[album].title,
 		Page:         page + 1,
 		NumPages:     numPages,
-		First:        READ_PATH + af + fmt.Sprintf("page=0", album),
+		First:        READ_PATH + af + "page=0",
 		Back:         backFolder,
 		Last:         READ_PATH + af + fmt.Sprintf("page=%d", numPages-1),
 		WebRoot:      jomics.webroot,
