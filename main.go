@@ -403,10 +403,11 @@ type Page struct {
 	First        string
 	Back         string
 	Last         string
-	HasPrev      bool
 	PageImageUrl string
 	Prev         string
+	PrevDisabled string
 	HasNext      bool
+	NextDisabled string
 	Next         string
 }
 
@@ -453,11 +454,17 @@ func (jomics *jomics) handleReadAlbum(w http.ResponseWriter, r *http.Request) {
 		Last:         READ_PATH + af + fmt.Sprintf("page=%d", numPages-1),
 		WebRoot:      jomics.webroot,
 		PageImageUrl: IMAGE_PATH + af + fmt.Sprintf("page=%d", page),
-		HasPrev:      page > 0,
 		Prev:         READ_PATH + af + fmt.Sprintf("page=%d", page-1),
 		HasNext:      page < (numPages - 1),
 		Next:         READ_PATH + af + fmt.Sprintf("page=%d", page+1),
 	}
+	if page == 0 {
+		data.PrevDisabled = "disabled"
+	}
+	if !data.HasNext {
+		data.NextDisabled = "disabled"
+	}
+
 	jomics.pageTmpl.Execute(w, data)
 }
 

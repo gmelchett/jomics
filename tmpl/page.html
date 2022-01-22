@@ -14,11 +14,7 @@
       <br/>
       <div class="grid">
 	<div>
-	  {{ if .HasPrev }}
-	  <form action="{{ .WebRoot}}{{ .Prev }}" method="post"><input type="submit" value="Prev"/></form>
-	  {{ else }}
-	  <form action="{{ .WebRoot}}{{ .Prev }}" method="post"><input type="submit" value="Prev" disabled/></form>
-	  {{ end }}
+	  <form action="{{ .WebRoot}}{{ .Prev }}" method="post"><input type="submit" value="Prev" {{.PrevDisabled}} /></form>
 	</div>
 	<div>
 	  {{ if .HasNext }}
@@ -30,9 +26,9 @@
       </div>
 
       <div class="grid">
-	<div><form action="{{ .WebRoot}}{{ .First }}" method="post"><input type="submit" value="First"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .First }}" method="post"><input type="submit" value="First" {{.PrevDisabled}} /></form></div>
 	<div><form action="{{ .WebRoot}}{{ .Back }}" method="post"><input type="submit" value="Back"/></form></div>
-	<div><form action="{{ .WebRoot}}{{ .Last }}" method="post"><input type="submit" value="Last"/></form></div>
+	<div><form action="{{ .WebRoot}}{{ .Last }}" method="post"><input type="submit" value="Last" {{.NextDisabled}} /></form></div>
       </div>
 
     </main>
